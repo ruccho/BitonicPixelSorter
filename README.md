@@ -16,5 +16,11 @@
 ```csharp
 var sorter = GetComponent<PixelSortingBitonic>();
 
-sorter.Execute(sourceTrxture, destinationTexture);
+sorter.Execute(sourceTexture, destinationTexture);
 ```
+
+## References
+
+https://github.com/hiroakioishi/UnityGPUBitonicSort
+
+https://www.inf.hs-flensburg.de/lang/algorithmen/sortieren/bitonic/oddn.htm
