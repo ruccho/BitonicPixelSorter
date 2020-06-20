@@ -1,0 +1,177 @@
+﻿
+#pragma kernel BitonicSort
+#pragma kernel ThresholdMask
+
+//thread count
+#define BLOCK_SIZE 1024
+
+// source / destination
+RWTexture2D<float4> dstTex;
+
+// threshold map
+Texture2D<float4> thrTex;
+
+//parameters
+cbuffer CB
+{
+    // bitonic sort parameters
+	uint _Level;
+	uint _LevelMax;
+	
+	// texture size
+	uint _Width;
+	uint _Height;
+	
+	// threshold (used only by ThresholdMask kernel)
+	float _ThresholdMin;
+	float _ThresholdMax;
+};
+
+// buffer to store and sync pixels on each line
+// max width of input testure is 2048
+groupshared float4 shared_data[2048];
+
+// calculate brightness
+float br(float4 col)
+{
+	return (0.298912 * col.r + 0.586611 * col.g + 0.114478 * col.b);//max(col.r, max(col.g, col.b));//
+}
+
+//sorting kernel
+[numthreads(BLOCK_SIZE,1,1)]
+void BitonicSort (uint3 Gid  : SV_GroupID, 
+				 uint3 DTid : SV_DispatchThreadID, 
+				 uint3 GTid : SV_GroupThreadID, 
+				 uint  GI   : SV_GroupIndex)
+{
+	// number of pixels to process per thread
+	uint iter = _Width / BLOCK_SIZE + 1;
+	
+	// the coordinate to access the threshold map and the source texture
+	uint2 texCoord = DTid.xy;
+	texCoord.x = min(_Width, texCoord.x);
+	
+	uint i = 0;
+	
+	// threshold map data
+	float4 thr[2];
+	for(i = 0; i < iter; i++)
+	{
+	    uint x = GI + i * BLOCK_SIZE;
+	    thr[i] = thrTex[uint2(min(_Width, x), DTid.y)];
+	}
+	
+	float4 result[2];
+	bool swappable[2];
+	
+	// store pixels on current line to the shared buffer
+	for(i = 0; i < iter; i++)
+	{
+	    uint x = GI + i * BLOCK_SIZE;
+	    shared_data[min(_Width, x)] = dstTex[uint2(min(_Width, x), DTid.y)];
+	}
+	GroupMemoryBarrierWithGroupSync();
+
+	// sort the shared data
+	for (uint j = _Level >> 1; j > 0; j >>= 1)
+	{
+	
+	    for(i = 0; i < iter; i++)
+	    {
+            uint x = GI + i * BLOCK_SIZE;
+            
+            bool isInBound = x < _Width;
+            
+            // read threshold data
+	        uint offset = thr[i].g;
+	        uint rangeStarts = thr[i].g;
+	        uint rangeEnds = thr[i].b;
+	        uint isInRange = thr[i].r > 0.5;
+	        
+	        // positions to swap
+	        uint a = ((x - offset) & ~j) + offset;
+	        uint b = ((x - offset) | j) + offset;
+	    
+	        swappable[i] = isInBound && isInRange && a < _Width && b < _Width && a >= rangeStarts && a < rangeEnds && b >= rangeStarts && b < rangeEnds;
+	    
+	        bool ascending = (((x - offset) / _Level) % 2 == 1) || (_Level == _LevelMax);
+	    
+	        bool sel = ascending != (a == x);
+	    
+	        //determine swapped value
+	        result[i] = (br(shared_data[min(_Width, a)]) <= br(shared_data[min(_Width, b)])) == sel ? shared_data[min(_Width, b)] : shared_data[min(_Width, a)];
+	        
+	    }
+	    
+		GroupMemoryBarrierWithGroupSync();
+		
+		//apply swapped value
+	    for(i = 0; i < iter; i++)
+	    {
+            uint x = GI + i * BLOCK_SIZE;
+            
+		    shared_data[min(_Width, x)] = swappable[i] ? result[i] : shared_data[min(_Width, x)];
+		}
+		GroupMemoryBarrierWithGroupSync();
+	}
+
+	// write to destination texture
+	
+	for(i = 0; i < iter; i++)
+	{
+	    uint x = GI + i * BLOCK_SIZE;
+	    dstTex[uint2(x, DTid.y)] = shared_data[x];
+	}
+}
+
+[numthreads(1,1,1)]
+void ThresholdMask (uint3 Gid  : SV_GroupID, 
+				 uint3 DTid : SV_DispatchThreadID, 
+				 uint3 GTid : SV_GroupThreadID, 
+				 uint  GI   : SV_GroupIndex)
+{
+    uint y = DTid.y;
+    
+    bool isInRange = false;
+    uint rangeStarts = 0;
+    for (uint x = 0; x < _Width; x++)
+    {
+        uint index = y * _Width + x;
+        
+        float b = br(dstTex[uint2(x, y)]);
+        bool r = b >= _ThresholdMin && b <= _ThresholdMax;
+        if (!isInRange && r)
+        {
+            for (uint xd = rangeStarts; xd < x; xd++)
+            {
+                dstTex[uint2(xd, y)] = float4(0, 1024, 1024, 0);
+            }
+            rangeStarts = x;
+        }
+        else if (isInRange && !r)
+        {
+            for (uint xd = rangeStarts; xd < x; xd++)
+            {
+                dstTex[uint2(xd, y)] = float4(1, rangeStarts, x, 0);
+            }
+            rangeStarts = x;
+        }
+        isInRange = r;
+    }
+    
+    if (isInRange)
+    {
+        for (uint xd = rangeStarts; xd < _Width; xd++)
+        {
+            dstTex[uint2(xd, y)] = float4(1, rangeStarts, _Width, 0);
+        }
+    }
+    else
+    {
+        for (uint xd = rangeStarts; xd < _Width; xd++)
+        {
+            dstTex[uint2(xd, y)] =  float4(0, 1024, 1024, 0);
+        }
+    }
+
+}
