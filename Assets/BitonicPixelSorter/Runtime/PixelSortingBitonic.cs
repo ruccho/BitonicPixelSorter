@@ -15,6 +15,24 @@ namespace Ruccho.Utilities
         [SerializeField] private float thresholdMin = 0.2f;
         [SerializeField] private float thresholdMax = 0.8f;
 
+        public bool UseAsImageEffect
+        {
+            get => useAsImageEffect;
+            set => useAsImageEffect = value;
+        }
+
+        public float ThresholdMin
+        {
+            get => thresholdMin;
+            set => thresholdMin = value;
+        }
+
+        public float ThresholdMax
+        {
+            get => thresholdMax;
+            set => thresholdMax = value;
+        }
+
         const int BLOCK_SIZE = 1024;
         const int KERNEL_ID_BITONICSORT = 0;
         const int KERNEL_ID_THRESHOLDMASK = 1;
