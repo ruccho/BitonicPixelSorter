@@ -100,7 +100,11 @@ namespace Ruccho.Utilities
 
             int maxLevel = (int) Mathf.Pow(2f, Mathf.CeilToInt(Mathf.Log(w, 2f)));
 
-            for (uint level = 2; level <= maxLevel; level <<= 1)
+            shader.SetInt("_LevelMax", maxLevel);
+            
+            shader.Dispatch(KERNEL_ID_BITONICSORT, 1, h, 1);
+            
+            /*for (uint level = 2; level <= maxLevel; level <<= 1)
             {
                 shader.SetInt("_Level", (int) level);
                 shader.SetInt("_LevelMax", maxLevel);
@@ -108,7 +112,7 @@ namespace Ruccho.Utilities
                 shader.SetInt("_Height",  h);
 
                 shader.Dispatch(KERNEL_ID_BITONICSORT, 1, h, 1);
-            }
+            }*/
 
             Graphics.Blit(sortTex, dest);
         }

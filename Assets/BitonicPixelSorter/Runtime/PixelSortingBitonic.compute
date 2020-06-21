@@ -71,48 +71,51 @@ void BitonicSort (uint3 Gid  : SV_GroupID,
 	    shared_data[min(_Width, x)] = dstTex[uint2(min(_Width, x), DTid.y)];
 	}
 	GroupMemoryBarrierWithGroupSync();
-
-	// sort the shared data
-	for (uint j = _Level >> 1; j > 0; j >>= 1)
-	{
 	
-	    for(i = 0; i < iter; i++)
+    for (uint level = 2; level <= _LevelMax; level <<= 1)
+    {
+	    // sort the shared data
+	    for (uint j = level >> 1; j > 0; j >>= 1)
 	    {
-            uint x = GI + i * BLOCK_SIZE;
-            
-            bool isInBound = x < _Width;
-            
-            // read threshold data
-	        uint offset = thr[i].g;
-	        uint rangeStarts = thr[i].g;
-	        uint rangeEnds = thr[i].b;
-	        uint isInRange = thr[i].r > 0.5;
+	    
+	        for(i = 0; i < iter; i++)
+	        {
+                uint x = GI + i * BLOCK_SIZE;
+                
+                bool isInBound = x < _Width;
+                
+                // read threshold data
+	            uint offset = thr[i].g;
+	            uint rangeStarts = thr[i].g;
+	            uint rangeEnds = thr[i].b;
+	            uint isInRange = thr[i].r > 0.5;
+	            
+	            // positions to swap
+	            uint a = ((x - offset) & ~j) + offset;
+	            uint b = ((x - offset) | j) + offset;
 	        
-	        // positions to swap
-	        uint a = ((x - offset) & ~j) + offset;
-	        uint b = ((x - offset) | j) + offset;
-	    
-	        swappable[i] = isInBound && isInRange && a < _Width && b < _Width && a >= rangeStarts && a < rangeEnds && b >= rangeStarts && b < rangeEnds;
-	    
-	        bool ascending = (((x - offset) / _Level) % 2 == 1) || (_Level == _LevelMax);
-	    
-	        bool sel = ascending != (a == x);
-	    
-	        //determine swapped value
-	        result[i] = (br(shared_data[min(_Width, a)]) <= br(shared_data[min(_Width, b)])) == sel ? shared_data[min(_Width, b)] : shared_data[min(_Width, a)];
+	            swappable[i] = isInBound && isInRange && a < _Width && b < _Width && a >= rangeStarts && a < rangeEnds && b >= rangeStarts && b < rangeEnds;
 	        
+	            bool ascending = (((x - offset) / level) % 2 == 1) || (level == _LevelMax);
+	        
+	            bool sel = ascending != (a == x);
+	        
+	            //determine swapped value
+	            result[i] = (br(shared_data[min(_Width, a)]) <= br(shared_data[min(_Width, b)])) == sel ? shared_data[min(_Width, b)] : shared_data[min(_Width, a)];
+	            
+	        }
+	        
+	    	GroupMemoryBarrierWithGroupSync();
+	    	
+	    	//apply swapped value
+	        for(i = 0; i < iter; i++)
+	        {
+                uint x = GI + i * BLOCK_SIZE;
+                
+	    	    shared_data[min(_Width, x)] = swappable[i] ? result[i] : shared_data[min(_Width, x)];
+	    	}
+	    	GroupMemoryBarrierWithGroupSync();
 	    }
-	    
-		GroupMemoryBarrierWithGroupSync();
-		
-		//apply swapped value
-	    for(i = 0; i < iter; i++)
-	    {
-            uint x = GI + i * BLOCK_SIZE;
-            
-		    shared_data[min(_Width, x)] = swappable[i] ? result[i] : shared_data[min(_Width, x)];
-		}
-		GroupMemoryBarrierWithGroupSync();
 	}
 
 	// write to destination texture
