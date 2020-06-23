@@ -220,7 +220,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: ecf70b13bd4ee4549bd3dd6544c9edb6, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -459,8 +459,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   useAsImageEffect: 1
   bitonicSortShader: {fileID: 7200000, guid: 158dee1e84d792846a130ca1ac29d6ca, type: 3}
-  thresholdMin: 0.2
-  thresholdMax: 0.8
+  thresholdMin: 0.08
+  thresholdMax: 0.9
 --- !u!1 &702147355
 GameObject:
   m_ObjectHideFlags: 0
@@ -555,7 +555,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: ecf70b13bd4ee4549bd3dd6544c9edb6, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -738,7 +738,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: ecf70b13bd4ee4549bd3dd6544c9edb6, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

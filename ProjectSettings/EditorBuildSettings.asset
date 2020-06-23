@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/BitonicPixelSorter/Samples/SampleScene.unity
+    guid: a1b2f978bd6dd5946b162beda48e9b59
   m_configObjects: {}

@@ -33,9 +33,9 @@ namespace Ruccho.Utilities
             set => thresholdMax = value;
         }
 
-        const int BLOCK_SIZE = 1024;
-        const int KERNEL_ID_BITONICSORT = 0;
-        const int KERNEL_ID_THRESHOLDMASK = 1;
+        private const int KERNEL_ID_BITONICSORT = 0;
+        private const int KERNEL_ID_THRESHOLDMASK = 1;
+        private const int THR_BLOCK_SIZE = 1;
 
         private RenderTexture sortTex;
         private RenderTexture thresholdTex;
@@ -101,19 +101,13 @@ namespace Ruccho.Utilities
             int maxLevel = (int) Mathf.Pow(2f, Mathf.CeilToInt(Mathf.Log(w, 2f)));
 
             shader.SetInt("_LevelMax", maxLevel);
+            int thrDispatchGroupY = Mathf.CeilToInt((float) h / THR_BLOCK_SIZE);
             
-            shader.Dispatch(KERNEL_ID_BITONICSORT, 1, h, 1);
+            shader.Dispatch(KERNEL_ID_BITONICSORT, 1, thrDispatchGroupY, 1);
             
-            /*for (uint level = 2; level <= maxLevel; level <<= 1)
-            {
-                shader.SetInt("_Level", (int) level);
-                shader.SetInt("_LevelMax", maxLevel);
-                shader.SetInt("_Width",  w);
-                shader.SetInt("_Height",  h);
+            
 
-                shader.Dispatch(KERNEL_ID_BITONICSORT, 1, h, 1);
-            }*/
-
+            //Graphics.Blit(thresholdTex, dest);
             Graphics.Blit(sortTex, dest);
         }
 
