@@ -1,21 +1,26 @@
 # BitonicPixelSorter
  GPU-accelerated pixel sorter with bitonic sorting for Unity.
 
-![image](https://user-images.githubusercontent.com/16096562/85205446-628a1f80-b356-11ea-8a0b-ddc198db3572.png)
+ The screenshot below shows it running on an NVIDIA GeForce GTX2070 SUPER and it keeps over 100FPS at FHD resolution.
 
-## PixelSortingBitonic Component
-![image](https://user-images.githubusercontent.com/16096562/85205482-8d747380-b356-11ea-9b32-ab1c613e5db0.png)
+![image](https://user-images.githubusercontent.com/16096562/125492797-ecfa9c21-98ca-4b78-ad84-a2e47ad19ec7.png)
+
+## BitonicPixelSorter Component
+![image](https://user-images.githubusercontent.com/16096562/125492519-6a363ad6-87b3-451b-a6a3-37b859821db5.png)
 |Property|Type|Description|
 |-|-|-|
 |Use As Image Effect|`bool`|It works as an image effect when attached to the camera. This is only active when you are using legacy render pipeline.|
-|Bitonic Sort Shader|`ComputeShader`|Set `PixelSortingBitonic.compute`.|
-|Threshold Min|`float`|Lower limit of brightness threshold.|
-|Threshold Max|`float`|Upper limit of brightness threshold.|
+|Shader|`ComputeShader`|Set `BoitonicPixelSorter.compute`.|
+|Direction|`bool`|Switches sorting direction between horizontal / vertical.|
+|Ascending|`bool`|Switches ordering.|
+|Threshold Min|`float`|Lower threshold of the brightness.|
+|Threshold Max|`float`|Upper threshold of the brightness.|
 
 ### Use from code
 ```csharp
-var sorter = GetComponent<PixelSortingBitonic>();
+var sorter = GetComponent<BitonicPixelSorter>();
 
+//BitonicPixelSorter.Execute(Texture src, RenderTexture dst)
 sorter.Execute(sourceTexture, destinationTexture);
 ```
 

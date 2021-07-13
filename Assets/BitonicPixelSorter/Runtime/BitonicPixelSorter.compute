@@ -1,0 +1,208 @@
+﻿#pragma kernel MetaPass
+#pragma kernel SortPass
+
+#define MAX_THREADS 1024
+
+Texture2D<float4> srcTex;
+RWTexture2D<float4> metaTex;
+RWTexture2D<float4> sortTex;
+
+bool direction;
+
+float thresholdMin;
+float thresholdMax;
+
+int phase;
+int comparatorSize;
+bool ordering;
+
+
+float brightness(float4 col)
+{
+    return (0.298912 * col.r + 0.586611 * col.g + 0.114478 * col.b);
+}
+
+void markRange(uint rangeStart, uint length, uint y)
+{
+    bool startsAtOdd = (rangeStart % 2) > 0;
+
+    //mark prev start pixel
+    if (rangeStart >= 1)
+    {
+        uint2 poss;
+        poss.x = direction ? rangeStart - 1 : y;
+        poss.y = direction ? y : rangeStart - 1;
+
+        metaTex[poss] = float4(
+            0 + //isInRange
+            (startsAtOdd ? 2 : 0) + //startsAtOdd
+            4, //prevStart
+            0,
+            length,
+            0
+        );
+    }
+
+    for (uint x = 0; x < length; x++)
+    {
+        //mark as range
+        uint2 xd = x + rangeStart;
+        uint2 posd;
+        posd.x = direction ? xd : y;
+        posd.y = direction ? y : xd;
+        metaTex[posd] = float4(
+            1 + //isInRange
+            (startsAtOdd ? 2 : 0) + //startsAtOdd
+            0, //prevStart
+            (float)x, //posInRange
+            (float)length, //rangeLength
+            0 //unused
+        );
+    }
+}
+
+[numthreads(1,1,1)]
+void MetaPass(uint3 groupId : SV_GroupID)
+{
+    uint width, height;
+    srcTex.GetDimensions(width, height);
+
+    uint size = direction ? width : height;
+    uint id = groupId.x;
+
+    uint rangeStart = 0;
+    bool isInRange = false;
+    for (uint x = 0; x < size; x++)
+    {
+        uint2 pos;
+        pos.x = direction ? x : id;
+        pos.y = direction ? id : x;
+
+        float4 col = srcTex[pos];
+        float b = brightness(col);
+        bool range = thresholdMin <= b && b <= thresholdMax;
+
+        [branch]
+        if (!isInRange && range)
+        {
+            //entering
+            isInRange = true;
+            rangeStart = x;
+        }
+        else if (isInRange && !range)
+        {
+            //exiting
+            isInRange = false;
+            markRange(rangeStart, x - rangeStart, id);
+        }
+
+        if (!range)
+        {
+            metaTex[pos] = float4(
+                0, //isInRange
+                0, 0, 0
+            );
+        }
+    }
+
+    if (isInRange)
+    {
+        isInRange = false;
+        markRange(rangeStart, size - rangeStart, id);
+    }
+}
+
+void SortPassInternal(uint2 id)
+{
+    uint2 pos;
+    pos.x = direction ? id.x : id.y;
+    pos.y = direction ? id.y : id.x;
+
+    //get meta
+    float4 meta = metaTex[pos];
+    int mask = meta.x;
+    bool isInRange = (mask & 1) > 0;
+    bool startsAtOdd = (mask & 2) > 0;
+    bool prevStart = (mask & 4) > 0;
+    uint posInRange = meta.y;
+    uint rangeLength = meta.z;
+
+    uint rangeStart = id.x - posInRange;
+    
+    if (startsAtOdd)
+    {
+        if (isInRange)
+        {
+            posInRange++;
+            if (rangeLength <= posInRange) return;
+        }
+        else if (prevStart)
+        {
+            posInRange = 0;
+            rangeStart++;
+        }
+    }
+    else if (!isInRange) return;
+
+    uint rangeEnd = rangeStart + rangeLength - 1;
+
+    uint d = comparatorSize;
+    uint level = phase;
+    uint n = rangeLength;
+
+    uint swapIndex = posInRange / 2;
+    
+    uint blockSize = 1 << (level + 1);
+    uint endBlock = n / blockSize;
+    bool ascPattern = (endBlock % 2 == 0) == ordering;
+    
+    uint a = rangeStart + (swapIndex % d) + floor(swapIndex / d) * d * 2;
+    uint b = a + d;
+
+    if (b > rangeEnd) return;
+    uint block = swapIndex / (1 << level);
+    bool asc = (block % 2 == 0) == ascPattern;
+
+    //compare
+    uint2 pos_a;
+    uint2 pos_b;
+    pos_a.x = direction ? a : id.y;
+    pos_a.y = direction ? id.y : a;
+    pos_b.x = direction ? b : id.y;
+    pos_b.y = direction ? id.y : b;
+
+    float4 col_a = sortTex[pos_a];
+    float4 col_b = sortTex[pos_b];
+
+    float br_a = brightness(col_a);
+    float br_b = brightness(col_b);
+
+    float4 left = asc == (br_a < br_b) ? col_a : col_b;
+    float4 right = asc == (br_a < br_b) ? col_b : col_a;
+
+    sortTex[pos_a] = left;
+    sortTex[pos_b] = right;
+}
+
+[numthreads(MAX_THREADS,1,1)]
+void SortPass(uint3 gid : SV_GroupID,
+              uint3 gtid : SV_GroupThreadID)
+{
+    uint width, height;
+    sortTex.GetDimensions(width, height);
+
+    uint size = direction ? width : height;
+    uint reducedSize = ceil((float)size / 2);
+
+    uint ops = ceil((float)reducedSize / MAX_THREADS);
+    for (uint t = 0; t < ops; t++)
+    {
+        uint x = (MAX_THREADS * t + gtid.x) << 1;
+        uint y = gid.x;
+
+        if (x < size)
+        {
+            SortPassInternal(uint2(x, y));
+        }
+    }
+}

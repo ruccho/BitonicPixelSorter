@@ -373,6 +373,7 @@ GameObject:
   - component: {fileID: 534669905}
   - component: {fileID: 534669904}
   - component: {fileID: 534669903}
+  - component: {fileID: 534669907}
   - component: {fileID: 534669906}
   m_Layer: 0
   m_Name: Main Camera
@@ -452,7 +453,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 534669902}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 21cfcb4102ab9e449b4a52d0da46768e, type: 3}
   m_Name: 
@@ -461,6 +462,24 @@ MonoBehaviour:
   bitonicSortShader: {fileID: 7200000, guid: 158dee1e84d792846a130ca1ac29d6ca, type: 3}
   thresholdMin: 0.08
   thresholdMax: 0.9
+--- !u!114 &534669907
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 534669902}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53ac00926eba6974dac29c1c4b541117, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  useAsImageEffect: 1
+  shader: {fileID: 7200000, guid: 950241c127228c44b8fdb4f48baad5f0, type: 3}
+  direction: 1
+  ascending: 1
+  thresholdMin: 0.155
+  thresholdMax: 0.822
 --- !u!1 &702147355
 GameObject:
   m_ObjectHideFlags: 0
