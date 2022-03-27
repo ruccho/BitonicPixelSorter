@@ -30,8 +30,6 @@ namespace Ruccho.Utilities
         private readonly int k_ordering = Shader.PropertyToID("ordering");
         private readonly int k_MaxLevels = Shader.PropertyToID("maxLevels");
 
-        private static readonly int NumMetaPassThreads = 32;
-
         private bool isInitialized = false;
 
         private void Initialize()
