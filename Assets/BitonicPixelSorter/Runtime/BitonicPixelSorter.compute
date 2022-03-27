@@ -12,8 +12,9 @@ bool direction;
 float thresholdMin;
 float thresholdMax;
 
-int phase;
-int comparatorSize;
+int maxLevels;
+//int phase;
+//int comparatorSize;
 bool ordering;
 
 
@@ -112,7 +113,7 @@ void MetaPass(uint3 groupId : SV_GroupID)
     }
 }
 
-void SortPassInternal(uint2 id)
+void SortPassInternal(uint2 id, uint phase, uint comparatorSize)
 {
     uint2 pos;
     pos.x = direction ? id.x : id.y;
@@ -195,14 +196,24 @@ void SortPass(uint3 gid : SV_GroupID,
     uint reducedSize = ceil((float)size / 2);
 
     uint ops = ceil((float)reducedSize / MAX_THREADS);
-    for (uint t = 0; t < ops; t++)
+    
+    for (uint phase = 0; phase < maxLevels; phase++)
     {
-        uint x = (MAX_THREADS * t + gtid.x) << 1;
-        uint y = gid.x;
-
-        if (x < size)
+        for (uint d = 1 << phase; d > 0; d >>= 1)
         {
-            SortPassInternal(uint2(x, y));
+            uint comparatorSize = d;
+            for (uint t = 0; t < ops; t++)
+            {
+                uint x = (MAX_THREADS * t + gtid.x) << 1;
+                uint y = gid.x;
+
+                if (x < size)
+                {
+                    SortPassInternal(uint2(x, y), phase, comparatorSize);
+                }
+            }
+
+            DeviceMemoryBarrierWithGroupSync();
         }
     }
 }

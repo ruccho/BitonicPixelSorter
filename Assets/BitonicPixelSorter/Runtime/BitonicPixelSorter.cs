@@ -27,8 +27,9 @@ namespace Ruccho.Utilities
         private readonly int k_metaTex = Shader.PropertyToID("metaTex");
         private readonly int k_sortTex = Shader.PropertyToID("sortTex");
         private readonly int k_ordering = Shader.PropertyToID("ordering");
-        private readonly int k_phase = Shader.PropertyToID("phase");
-        private readonly int k_comparatorSize = Shader.PropertyToID("comparatorSize");
+        private readonly int k_MaxLevels = Shader.PropertyToID("maxLevels");
+        //private readonly int k_phase = Shader.PropertyToID("phase");
+        //private readonly int k_comparatorSize = Shader.PropertyToID("comparatorSize");
 
         private bool isInitialized = false;
 
@@ -81,7 +82,10 @@ namespace Ruccho.Utilities
             shader.SetBool(k_ordering, ascending);
 
             int maxLevel = Mathf.CeilToInt(Mathf.Log(size, 2));
+            
+            shader.SetInt(k_MaxLevels, maxLevel);
 
+            /*
             for (int level = 0; level < maxLevel; level++)
             {
                 shader.SetInt(k_phase, level);
@@ -91,6 +95,9 @@ namespace Ruccho.Utilities
                     shader.Dispatch(sortPassIndex, lines, 1, 1);
                 }
             }
+            */
+            
+            shader.Dispatch(sortPassIndex, lines, 1, 1);
             
             Graphics.Blit(sortTex, dst);
         }
