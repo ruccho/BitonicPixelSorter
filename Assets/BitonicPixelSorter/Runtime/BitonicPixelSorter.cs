@@ -25,11 +25,12 @@ namespace Ruccho.Utilities
         private readonly int k_thresholdMax = Shader.PropertyToID("thresholdMax");
         private readonly int k_srcTex = Shader.PropertyToID("srcTex");
         private readonly int k_metaTex = Shader.PropertyToID("metaTex");
+        private readonly int k_srcMetaTex = Shader.PropertyToID("srcMetaTex");
         private readonly int k_sortTex = Shader.PropertyToID("sortTex");
         private readonly int k_ordering = Shader.PropertyToID("ordering");
         private readonly int k_MaxLevels = Shader.PropertyToID("maxLevels");
-        //private readonly int k_phase = Shader.PropertyToID("phase");
-        //private readonly int k_comparatorSize = Shader.PropertyToID("comparatorSize");
+
+        private static readonly int NumMetaPassThreads = 32;
 
         private bool isInitialized = false;
 
@@ -63,7 +64,14 @@ namespace Ruccho.Utilities
             int size = direction ? width : height;
             int lines = direction ? height : width;
 
-            EnsureBufferTextureSize(ref metaTex, width, height, RenderTextureFormat.ARGBFloat);
+            if (size >= 2048)
+            {
+                Debug.LogError("[BitonicPixelSorter] Size of source texture must be smaller than 2048.");
+                Graphics.Blit(src, dst);
+                return;
+            }
+
+            EnsureBufferTextureSize(ref metaTex, width, height, RenderTextureFormat.RGFloat);
             EnsureBufferTextureSize(ref sortTex, width, height, RenderTextureFormat.ARGB32);
 
             shader.SetBool(k_direction, direction);
@@ -73,29 +81,21 @@ namespace Ruccho.Utilities
             shader.SetTexture(metaPassIndex, k_srcTex, src);
             shader.SetTexture(metaPassIndex, k_metaTex, metaTex);
             
-            shader.Dispatch(metaPassIndex, lines, 1, 1);
+            shader.GetKernelThreadGroupSizes(metaPassIndex, out uint metaGroupX, out uint metaGroupY, out uint metaGroupZ);
+            uint metaGroupSize = metaGroupX * metaGroupY * metaGroupZ;
+            int metaDispatchCount = Mathf.CeilToInt((float)lines * 2 / metaGroupSize);
+            
+            shader.Dispatch(metaPassIndex, metaDispatchCount, 1, 1);
             
             Graphics.Blit(src, sortTex);
             
+            shader.SetTexture(sortPassIndex, k_srcMetaTex, metaTex);
             shader.SetTexture(sortPassIndex, k_sortTex, sortTex);
-            shader.SetTexture(sortPassIndex, k_metaTex, metaTex);
             shader.SetBool(k_ordering, ascending);
 
             int maxLevel = Mathf.CeilToInt(Mathf.Log(size, 2));
             
             shader.SetInt(k_MaxLevels, maxLevel);
-
-            /*
-            for (int level = 0; level < maxLevel; level++)
-            {
-                shader.SetInt(k_phase, level);
-                for (int d = 1 << level; d > 0; d >>= 1)
-                {
-                    shader.SetInt(k_comparatorSize, d);
-                    shader.Dispatch(sortPassIndex, lines, 1, 1);
-                }
-            }
-            */
             
             shader.Dispatch(sortPassIndex, lines, 1, 1);
             

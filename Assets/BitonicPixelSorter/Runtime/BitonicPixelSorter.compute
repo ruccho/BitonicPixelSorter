@@ -1,188 +1,177 @@
 ﻿#pragma kernel MetaPass
 #pragma kernel SortPass
+#pragma enable_d3d11_debug_symbols
 
 #define MAX_THREADS 1024
+#define MAX_SIZE 2048
 
+#define MAX_OPS MAX_SIZE / MAX_THREADS
+
+// MetaPass
+groupshared uint metaGroupCache[MAX_SIZE * 4];
 Texture2D<float4> srcTex;
-RWTexture2D<float4> metaTex;
-RWTexture2D<float4> sortTex;
-
-bool direction;
+RWTexture2D<float2> metaTex;
 
 float thresholdMin;
 float thresholdMax;
 
+// SortPass
+groupshared float4 groupCache[MAX_SIZE];
+Texture2D<float2> srcMetaTex;
+RWTexture2D<float4> sortTex;
+
 int maxLevels;
-//int phase;
-//int comparatorSize;
 bool ordering;
 
+// Common
+bool direction;
 
 float brightness(float4 col)
 {
     return (0.298912 * col.r + 0.586611 * col.g + 0.114478 * col.b);
 }
 
-void markRange(uint rangeStart, uint length, uint y)
-{
-    bool startsAtOdd = (rangeStart % 2) > 0;
-
-    //mark prev start pixel
-    if (rangeStart >= 1)
-    {
-        uint2 poss;
-        poss.x = direction ? rangeStart - 1 : y;
-        poss.y = direction ? y : rangeStart - 1;
-
-        metaTex[poss] = float4(
-            0 + //isInRange
-            (startsAtOdd ? 2 : 0) + //startsAtOdd
-            4, //prevStart
-            0,
-            length,
-            0
-        );
-    }
-
-    for (uint x = 0; x < length; x++)
-    {
-        //mark as range
-        uint2 xd = x + rangeStart;
-        uint2 posd;
-        posd.x = direction ? xd : y;
-        posd.y = direction ? y : xd;
-        metaTex[posd] = float4(
-            1 + //isInRange
-            (startsAtOdd ? 2 : 0) + //startsAtOdd
-            0, //prevStart
-            (float)x, //posInRange
-            (float)length, //rangeLength
-            0 //unused
-        );
-    }
-}
-
-[numthreads(1,1,1)]
-void MetaPass(uint3 groupId : SV_GroupID)
+[numthreads(16,1,1)]
+void MetaPass(uint3 groupId : SV_GroupID,
+              uint3 gtid : SV_GroupThreadID)
 {
     uint width, height;
     srcTex.GetDimensions(width, height);
 
     uint size = direction ? width : height;
-    uint id = groupId.x;
+    uint id = groupId.x * 16 + gtid.x;
+    bool metaDirection = id % 2 == 0;
+    uint y = id / 2;
+    uint groupLocalY = gtid.x / 2;
 
-    uint rangeStart = 0;
-    bool isInRange = false;
-    for (uint x = 0; x < size; x++)
+    int rangeStart = metaDirection ? width : -1;
+    uint halfSize = size / 2;
+    halfSize = halfSize % 2 == 0 ? halfSize : halfSize + 1;
+
+    uint firstHalfSize = metaDirection ? halfSize : (size - halfSize);
+
+    uint packedCache = 0;
     {
-        uint2 pos;
-        pos.x = direction ? x : id;
-        pos.y = direction ? id : x;
-
-        float4 col = srcTex[pos];
-        float b = brightness(col);
-        bool range = thresholdMin <= b && b <= thresholdMax;
-
-        [branch]
-        if (!isInRange && range)
+        for (uint p = 0; p < firstHalfSize; p++)
         {
-            //entering
-            isInRange = true;
-            rangeStart = x;
+            uint x = metaDirection ? p : (size - p - 1);
+
+            uint2 pos;
+            pos.x = direction ? x : y;
+            pos.y = direction ? y : x;
+
+            float4 col = srcTex[pos];
+            float b = brightness(col);
+            bool range = thresholdMin <= b && b <= thresholdMax;
+
+            rangeStart = metaDirection
+                             ? (range ? min(rangeStart, (int)x) : size)
+                             : (range ? max(rangeStart, (int)x) : -1);
+
+            //pack into 16-bit
+            uint packed = asuint(rangeStart) & 0xFFFF; //extract lower 16bit
+            packed = (x % 2 == 0) ? packed : packed << 16; //shift
+            packedCache &= (x % 2 == 0) ? 0xFFFF0000 : 0x0000FFFF;
+            packedCache |= packed;
+            metaGroupCache[groupLocalY * halfSize + x / 2] = packedCache;
         }
-        else if (isInRange && !range)
-        {
-            //exiting
-            isInRange = false;
-            markRange(rangeStart, x - rangeStart, id);
-        }
+    }
 
-        if (!range)
+    GroupMemoryBarrierWithGroupSync();
+
+    {
+        for (uint p = firstHalfSize; p < size; p++)
         {
-            metaTex[pos] = float4(
-                0, //isInRange
-                0, 0, 0
+            uint x = metaDirection ? p : (size - p - 1);
+
+            uint2 pos;
+            pos.x = direction ? x : y;
+            pos.y = direction ? y : x;
+
+            //unpack
+            uint packed = metaGroupCache[groupLocalY * halfSize + x / 2];
+            packed = (x % 2 == 0) ? packed : packed >> 16;
+            bool isNegative = (packed & 0x8000) != 0;
+            packed &= 0xFFFF;
+            packed |= isNegative ? 0xFFFF0000 : 0;
+            int otherStart = asint(packed);
+
+            bool range = 0 <= otherStart && otherStart < (int)size;
+
+            rangeStart = metaDirection
+                             ? (range ? min(rangeStart, (int)x) : size)
+                             : (range ? max(rangeStart, (int)x) : -1);
+
+            float startL = metaDirection ? rangeStart : otherStart;
+            float startR = metaDirection ? otherStart : rangeStart;
+
+            metaTex[pos] = float2(
+                startL, //startL
+                startR //startR
             );
         }
     }
-
-    if (isInRange)
-    {
-        isInRange = false;
-        markRange(rangeStart, size - rangeStart, id);
-    }
 }
 
-void SortPassInternal(uint2 id, uint phase, uint comparatorSize)
+void SortPassInternal(uint2 id, uint phase, uint comparatorSize, uint3 meta, bool isLastPass)
 {
-    uint2 pos;
-    pos.x = direction ? id.x : id.y;
-    pos.y = direction ? id.y : id.x;
+    //bool isInRange = (meta.x & 1) > 0;
 
-    //get meta
-    float4 meta = metaTex[pos];
-    int mask = meta.x;
-    bool isInRange = (mask & 1) > 0;
-    bool startsAtOdd = (mask & 2) > 0;
-    bool prevStart = (mask & 4) > 0;
-    uint posInRange = meta.y;
-    uint rangeLength = meta.z;
-
-    uint rangeStart = id.x - posInRange;
-    
-    if (startsAtOdd)
-    {
-        if (isInRange)
-        {
-            posInRange++;
-            if (rangeLength <= posInRange) return;
-        }
-        else if (prevStart)
-        {
-            posInRange = 0;
-            rangeStart++;
-        }
-    }
-    else if (!isInRange) return;
-
-    uint rangeEnd = rangeStart + rangeLength - 1;
+    uint rangeStart = meta.y;
+    uint rangeEnd = meta.z;
+    bool useR = (meta.x & 2) > 0;
+    uint posInRange = id.x - rangeStart + (useR ? 1 : 0);
 
     uint d = comparatorSize;
     uint level = phase;
-    uint n = rangeLength;
+    uint n = rangeEnd - rangeStart + 1;
 
     uint swapIndex = posInRange / 2;
-    
+
     uint blockSize = 1 << (level + 1);
     uint endBlock = n / blockSize;
     bool ascPattern = (endBlock % 2 == 0) == ordering;
-    
+
     uint a = rangeStart + (swapIndex % d) + floor(swapIndex / d) * d * 2;
     uint b = a + d;
 
-    if (b > rangeEnd) return;
+    bool doSwap = b <= rangeEnd;
+    b = doSwap ? b : a;
+
     uint block = swapIndex / (1 << level);
     bool asc = (block % 2 == 0) == ascPattern;
 
     //compare
-    uint2 pos_a;
-    uint2 pos_b;
-    pos_a.x = direction ? a : id.y;
-    pos_a.y = direction ? id.y : a;
-    pos_b.x = direction ? b : id.y;
-    pos_b.y = direction ? id.y : b;
 
-    float4 col_a = sortTex[pos_a];
-    float4 col_b = sortTex[pos_b];
+    float4 col_a = groupCache[a];
+    float4 col_b = groupCache[b];
 
     float br_a = brightness(col_a);
     float br_b = brightness(col_b);
 
-    float4 left = asc == (br_a < br_b) ? col_a : col_b;
-    float4 right = asc == (br_a < br_b) ? col_b : col_a;
+    bool comp = br_a < br_b;
 
-    sortTex[pos_a] = left;
-    sortTex[pos_b] = right;
+    float4 left = asc == comp ? col_a : col_b;
+    float4 right = asc == comp ? col_b : col_a;
+
+    if (isLastPass)
+    {
+        uint2 pos_a;
+        pos_a.x = direction ? a : id.y;
+        pos_a.y = direction ? id.y : a;
+
+        uint2 pos_b;
+        pos_b.x = direction ? b : id.y;
+        pos_b.y = direction ? id.y : b;
+
+        sortTex[pos_a] = left;
+        sortTex[pos_b] = right;
+    }
+    else
+    {
+        groupCache[a] = left;
+        groupCache[b] = right;
+    }
 }
 
 [numthreads(MAX_THREADS,1,1)]
@@ -196,24 +185,84 @@ void SortPass(uint3 gid : SV_GroupID,
     uint reducedSize = ceil((float)size / 2);
 
     uint ops = ceil((float)reducedSize / MAX_THREADS);
-    
-    for (uint phase = 0; phase < maxLevels; phase++)
+
+    uint3 preMeta[MAX_OPS];
+
     {
-        for (uint d = 1 << phase; d > 0; d >>= 1)
+        for (uint t = 0; t < ops; t++)
         {
-            uint comparatorSize = d;
+            uint x = (MAX_THREADS * t + gtid.x) << 1;
+            uint y = gid.x;
+
+            uint2 id = uint2(x, y);
+
+            uint2 posL;
+            posL.x = direction ? id.x : id.y;
+            posL.y = direction ? id.y : id.x;
+
+            //use right value when a range starts from odd index
+            uint2 posR;
+            posR.x = direction ? id.x + 1 : id.y;
+            posR.y = direction ? id.y : id.x + 1;
+
+            //get meta
+            float2 metaL = srcMetaTex[posL];
+            float2 metaR = srcMetaTex[posR];
+
+            bool isInRangeR = metaR.y - metaR.x > 1;
+            bool startsAtOdd = ((uint)metaR.x % 2) > 0;
+
+            bool useR = isInRangeR && startsAtOdd;
+
+            float2 meta = useR ? metaR : metaL;
+
+            bool isInRange = isInRangeR || (meta.y - meta.x > 1);
+
+            uint startL = isInRange ? meta.x : id.x;
+            uint startR = isInRange ? meta.y : id.x;
+
+            preMeta[t] = uint3(
+                (isInRange ? 1 : 0) +
+                (useR ? 2 : 0),
+                startL,
+                startR
+            );
+        }
+    }
+
+    //cache line to the TGSM
+    uint pixelPerThread = ceil((float)size / MAX_THREADS);
+
+    {
+        for (uint t = 0; t < pixelPerThread; t++)
+        {
+            uint x = t * MAX_THREADS + gtid.x;
+            uint y = gid.x;
+            uint2 id = uint2(x, y);
+
+            uint2 pos;
+            pos.x = direction ? id.x : id.y;
+            pos.y = direction ? id.y : id.x;
+
+            groupCache[x] = sortTex[pos];
+        }
+    }
+
+    for (uint phase = 0; phase < (uint)maxLevels; phase++)
+    {
+        bool lastPhase = phase == (uint)maxLevels - 1;
+        for (uint comparatorSize = 1 << phase; comparatorSize > 0; comparatorSize >>= 1)
+        {
+            bool lastPass = lastPhase && comparatorSize == 1;
+            GroupMemoryBarrierWithGroupSync();
+
             for (uint t = 0; t < ops; t++)
             {
                 uint x = (MAX_THREADS * t + gtid.x) << 1;
                 uint y = gid.x;
 
-                if (x < size)
-                {
-                    SortPassInternal(uint2(x, y), phase, comparatorSize);
-                }
+                SortPassInternal(uint2(x, y), phase, comparatorSize, preMeta[t], lastPass);
             }
-
-            DeviceMemoryBarrierWithGroupSync();
         }
     }
 }
