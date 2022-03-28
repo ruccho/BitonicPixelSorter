@@ -31,7 +31,32 @@ float brightness(float4 col)
     return (0.298912 * col.r + 0.586611 * col.g + 0.114478 * col.b);
 }
 
-[numthreads(16,1,1)]
+uint packMetaGroupCache(uint source, bool first, bool left, bool right, int value)
+{
+    uint packed = asuint(value) & 0x3FFF; // lower 14bit
+    packed |= left ? 0x8000 : 0;
+    packed |= right ? 0x4000 : 0;
+    packed = first ? packed : packed << 16; //shift
+    source &= first ? 0xFFFF0000 : 0x0000FFFF;
+    source |= packed;
+    return source;
+    //metaGroupCache[groupLocalY * halfSize + x / 2] = packedCache;
+}
+
+void unpackMetaGroupCache(uint packed, bool first, out bool left, out bool right, out int value)
+{
+    packed = first ? packed : packed >> 16;
+    left = (packed & 0x8000) != 0;
+    right = (packed & 0x4000) != 0;
+    
+    uint valueSeg = packed & 0x3FFF; //lower 14bit
+    bool isNegative = (packed & 0x2000) != 0;
+    valueSeg |= isNegative ? 0xFFFFC000 : 0;
+    value = asint(valueSeg);
+}
+
+// pass to mark pixels to be sorted
+[numthreads(32,1,1)]
 void MetaPass(uint3 groupId : SV_GroupID,
               uint3 gtid : SV_GroupThreadID)
 {
@@ -39,72 +64,112 @@ void MetaPass(uint3 groupId : SV_GroupID,
     srcTex.GetDimensions(width, height);
 
     uint size = direction ? width : height;
-    uint id = groupId.x * 16 + gtid.x;
+    uint id = groupId.x * 32 + gtid.x;
     bool metaDirection = id % 2 == 0;
     uint y = id / 2;
     uint groupLocalY = gtid.x / 2;
 
-    int rangeStart = metaDirection ? width : -1;
-    uint halfSize = size / 2;
-    halfSize = halfSize % 2 == 0 ? halfSize : halfSize + 1;
+    int rangeStart = metaDirection ? size : -1;
+    uint halfSize = round(size / 8) * 4;
 
     uint firstHalfSize = metaDirection ? halfSize : (size - halfSize);
+    uint cacheLineSize = ceil(size / 4.0);
 
     uint packedCache = 0;
+
+    //
     {
-        for (uint p = 0; p < firstHalfSize; p++)
+        for (uint p = 0; p < firstHalfSize; p += 2)
         {
             uint x = metaDirection ? p : (size - p - 1);
+            
+            uint xMeta = x / 2;
+            uint xL = xMeta << 1;
+            uint xR = xL + 1;
+            uint xFirst = metaDirection ? xL : xR;
+            uint xSecond = metaDirection ? xR : xL;
 
-            uint2 pos;
-            pos.x = direction ? x : y;
-            pos.y = direction ? y : x;
+            // position on srcTex
+            uint2 posFirst;
+            posFirst.x = direction ? xFirst : y;
+            posFirst.y = direction ? y : xFirst;
+            
+            uint2 posSecond;
+            posSecond.x = direction ? xSecond : y;
+            posSecond.y = direction ? y : xSecond;
 
-            float4 col = srcTex[pos];
-            float b = brightness(col);
-            bool range = thresholdMin <= b && b <= thresholdMax;
+            float bFirst = brightness(srcTex[posFirst]);
+            bool rangeFirst = xFirst < size && thresholdMin <= bFirst && bFirst <= thresholdMax;
+
+            float bSecond = brightness(srcTex[posSecond]);
+            bool rangeSecond = thresholdMin <= bSecond && bSecond <= thresholdMax;
+
+            int rangeStartFirst = metaDirection
+                             ? (rangeFirst ? min(rangeStart, (int)xFirst) : size)
+                             : (rangeFirst ? max(rangeStart, (int)xFirst) : -1);
 
             rangeStart = metaDirection
-                             ? (range ? min(rangeStart, (int)x) : size)
-                             : (range ? max(rangeStart, (int)x) : -1);
+                             ? (rangeSecond ? min(rangeStartFirst, (int)xSecond) : size)
+                             : (rangeSecond ? max(rangeStartFirst, (int)xSecond) : -1);
+
+            int rangeStartAny = rangeFirst ? rangeStartFirst : rangeStart;
 
             //pack into 16-bit
-            uint packed = asuint(rangeStart) & 0xFFFF; //extract lower 16bit
-            packed = (x % 2 == 0) ? packed : packed << 16; //shift
-            packedCache &= (x % 2 == 0) ? 0xFFFF0000 : 0x0000FFFF;
-            packedCache |= packed;
-            metaGroupCache[groupLocalY * halfSize + x / 2] = packedCache;
+            uint cachePos = groupLocalY * cacheLineSize + x / 4;
+            uint cacheFirst = x % 4 < 2;
+            bool rangeLeft = metaDirection ? rangeFirst : rangeSecond;
+            bool rangeRight = metaDirection ? rangeSecond : rangeFirst;
+            packedCache = packMetaGroupCache(packedCache, cacheFirst, rangeLeft, rangeRight, rangeStartAny);
+
+            metaGroupCache[cachePos] = packedCache;
         }
     }
 
     GroupMemoryBarrierWithGroupSync();
 
     {
-        for (uint p = firstHalfSize; p < size; p++)
+        for (uint p = firstHalfSize; p < size; p += 2)
         {
             uint x = metaDirection ? p : (size - p - 1);
 
-            uint2 pos;
-            pos.x = direction ? x : y;
-            pos.y = direction ? y : x;
+            uint xMeta = x / 2;
+            uint xL = xMeta << 1;
+            uint xR = xL + 1;
+            uint xFirst = metaDirection ? xL : xR;
+            uint xSecond = metaDirection ? xR : xL;
 
             //unpack
-            uint packed = metaGroupCache[groupLocalY * halfSize + x / 2];
-            packed = (x % 2 == 0) ? packed : packed >> 16;
-            bool isNegative = (packed & 0x8000) != 0;
-            packed &= 0xFFFF;
-            packed |= isNegative ? 0xFFFF0000 : 0;
-            int otherStart = asint(packed);
+            uint cachePos = groupLocalY * cacheLineSize + x / 4;
+            bool cacheFirst = x % 4 < 2;
+            uint packed = metaGroupCache[cachePos];
 
-            bool range = 0 <= otherStart && otherStart < (int)size;
+            bool rangeLeft;
+            bool rangeRight;
+            int otherStart;
+            
+            unpackMetaGroupCache(packed, cacheFirst, rangeLeft, rangeRight, otherStart);
 
+            bool rangeFirst = metaDirection ? rangeLeft : rangeRight;
+            bool rangeSecond = metaDirection ? rangeRight : rangeLeft;
+
+            int rangeStartFirst = metaDirection
+                             ? (rangeFirst ? min(rangeStart, (int)xFirst) : size)
+                             : (rangeFirst ? max(rangeStart, (int)xFirst) : -1);
+            
             rangeStart = metaDirection
-                             ? (range ? min(rangeStart, (int)x) : size)
-                             : (range ? max(rangeStart, (int)x) : -1);
+                             ? (rangeSecond ? min(rangeStartFirst, (int)xSecond) : size)
+                             : (rangeSecond ? max(rangeStartFirst, (int)xSecond) : -1);
 
-            float startL = metaDirection ? rangeStart : otherStart;
-            float startR = metaDirection ? otherStart : rangeStart;
+            int rangeStartAny = rangeFirst ? rangeStartFirst : rangeStart;
 
+            float startL = metaDirection ? rangeStartAny : otherStart;
+            float startR = metaDirection ? otherStart : rangeStartAny;
+
+            // position on metaTex
+            uint2 pos;
+            pos.x = direction ? xMeta : y;
+            pos.y = direction ? y : xMeta;
+            
             metaTex[pos] = float2(
                 startL, //startL
                 startR //startR
@@ -116,6 +181,7 @@ void MetaPass(uint3 groupId : SV_GroupID,
 void SortPassInternal(uint2 id, uint phase, uint comparatorSize, uint3 meta, bool isLastPass)
 {
     //bool isInRange = (meta.x & 1) > 0;
+    //if(!isInRange) return;
 
     uint rangeStart = meta.y;
     uint rangeEnd = meta.z;
@@ -191,35 +257,28 @@ void SortPass(uint3 gid : SV_GroupID,
     {
         for (uint t = 0; t < ops; t++)
         {
-            uint x = (MAX_THREADS * t + gtid.x) << 1;
+            uint xMeta = (MAX_THREADS * t + gtid.x);
             uint y = gid.x;
 
-            uint2 id = uint2(x, y);
+            uint xL = xMeta << 1;
+            uint xR = xL + 1;
 
-            uint2 posL;
-            posL.x = direction ? id.x : id.y;
-            posL.y = direction ? id.y : id.x;
+            uint2 id = uint2(xMeta, y);
 
-            //use right value when a range starts from odd index
-            uint2 posR;
-            posR.x = direction ? id.x + 1 : id.y;
-            posR.y = direction ? id.y : id.x + 1;
+            uint2 pos;
+            pos.x = direction ? id.x : id.y;
+            pos.y = direction ? id.y : id.x;
 
             //get meta
-            float2 metaL = srcMetaTex[posL];
-            float2 metaR = srcMetaTex[posR];
+            float2 meta = srcMetaTex[pos];
+            bool useR = ((uint)meta.x % 2) > 0;
 
-            bool isInRangeR = metaR.y - metaR.x > 1;
-            bool startsAtOdd = ((uint)metaR.x % 2) > 0;
+            uint x = useR ? xR : xL;
 
-            bool useR = isInRangeR && startsAtOdd;
+            bool isInRange = (meta.y - meta.x > 1) && (x <= meta.y);
 
-            float2 meta = useR ? metaR : metaL;
-
-            bool isInRange = isInRangeR || (meta.y - meta.x > 1);
-
-            uint startL = isInRange ? meta.x : id.x;
-            uint startR = isInRange ? meta.y : id.x;
+            uint startL = isInRange ? meta.x : x;
+            uint startR = isInRange ? meta.y : x;
 
             preMeta[t] = uint3(
                 (isInRange ? 1 : 0) +

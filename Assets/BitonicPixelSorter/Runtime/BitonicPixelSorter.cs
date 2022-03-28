@@ -62,6 +62,9 @@ namespace Ruccho.Utilities
             int size = direction ? width : height;
             int lines = direction ? height : width;
 
+            int metaWidth = direction ? width / 2 : width;
+            int metaHeight = direction ? height : height / 2;
+
             if (size >= 2048)
             {
                 Debug.LogError("[BitonicPixelSorter] Size of source texture must be smaller than 2048.");
@@ -69,7 +72,7 @@ namespace Ruccho.Utilities
                 return;
             }
 
-            EnsureBufferTextureSize(ref metaTex, width, height, RenderTextureFormat.RGFloat);
+            EnsureBufferTextureSize(ref metaTex, metaWidth, metaHeight, RenderTextureFormat.RGFloat);
             EnsureBufferTextureSize(ref sortTex, width, height, RenderTextureFormat.ARGB32);
 
             shader.SetBool(k_direction, direction);
