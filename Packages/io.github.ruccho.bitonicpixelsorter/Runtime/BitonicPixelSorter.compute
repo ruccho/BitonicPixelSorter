@@ -28,7 +28,7 @@ bool direction;
 
 float brightness(float4 col)
 {
-    return (0.298912 * col.r + 0.586611 * col.g + 0.114478 * col.b);
+    return saturate(0.298912 * col.r + 0.586611 * col.g + 0.114478 * col.b);
 }
 
 uint packMetaGroupCache(uint source, bool first, bool left, bool right, int value)
@@ -40,7 +40,6 @@ uint packMetaGroupCache(uint source, bool first, bool left, bool right, int valu
     source &= first ? 0xFFFF0000 : 0x0000FFFF;
     source |= packed;
     return source;
-    //metaGroupCache[groupLocalY * halfSize + x / 2] = packedCache;
 }
 
 void unpackMetaGroupCache(uint packed, bool first, out bool left, out bool right, out int value)
@@ -77,7 +76,6 @@ void MetaPass(uint3 groupId : SV_GroupID,
 
     uint packedCache = 0;
 
-    //
     {
         for (uint p = 0; p < firstHalfSize; p += 2)
         {
