@@ -1,11 +1,11 @@
 {
-    "name": "io.github.ruccho.bitonicpixelsorter.urp",
+    "name": "com.ruccho.bitonicpixelsorter.urp",
     "version": "1.0.0",
     "displayName": "Bitonic Pixel Sorter - Universal RP Extension",
     "description": "",
     "unity": "2020.3",
     "dependencies": {
-        "io.github.ruccho.bitonicpixelsorter": "1.0.0",
+        "com.ruccho.bitonicpixelsorter": "1.0.0",
         "com.unity.render-pipelines.universal": "12.1.6"
     },
     "author": {

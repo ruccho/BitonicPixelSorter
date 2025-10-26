@@ -1,5 +1,20 @@
 {
   "dependencies": {
+    "com.ruccho.bitonicpixelsorter": {
+      "version": "file:com.ruccho.bitoicpixelsorter",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
+    "com.ruccho.bitonicpixelsorter.urp": {
+      "version": "file:com.ruccho.bitoicpixelsorter.urp",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {
+        "com.ruccho.bitonicpixelsorter": "1.0.0",
+        "com.unity.render-pipelines.universal": "12.1.6"
+      }
+    },
     "com.unity.2d.sprite": {
       "version": "1.0.0",
       "depth": 0,
@@ -29,8 +44,8 @@
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.services.analytics": "1.0.4",
-        "com.unity.ugui": "1.0.0"
+        "com.unity.ugui": "1.0.0",
+        "com.unity.services.analytics": "1.0.4"
       },
       "url": "https://packages.unity.com"
     },
@@ -160,9 +175,9 @@
       "depth": 2,
       "source": "registry",
       "dependencies": {
-        "com.unity.modules.unitywebrequest": "1.0.0",
+        "com.unity.modules.androidjni": "1.0.0",
         "com.unity.nuget.newtonsoft-json": "3.2.1",
-        "com.unity.modules.androidjni": "1.0.0"
+        "com.unity.modules.unitywebrequest": "1.0.0"
       },
       "url": "https://packages.unity.com"
     },
@@ -214,21 +229,6 @@
       "dependencies": {
         "com.unity.modules.ui": "1.0.0",
         "com.unity.modules.imgui": "1.0.0"
-      }
-    },
-    "io.github.ruccho.bitonicpixelsorter": {
-      "version": "file:io.github.ruccho.bitonicpixelsorter",
-      "depth": 0,
-      "source": "embedded",
-      "dependencies": {}
-    },
-    "io.github.ruccho.bitonicpixelsorter.urp": {
-      "version": "file:io.github.ruccho.bitonicpixelsorter.urp",
-      "depth": 0,
-      "source": "embedded",
-      "dependencies": {
-        "io.github.ruccho.bitonicpixelsorter": "1.0.0",
-        "com.unity.render-pipelines.universal": "12.1.6"
       }
     },
     "com.unity.modules.ai": {
