@@ -2,7 +2,6 @@ using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
-
 #if BPS_URP_17
 using UnityEngine.Rendering.RenderGraphModule;
 #endif
@@ -146,6 +145,12 @@ namespace Ruccho.Utilities
 
                 var metaWidth = Direction ? width / 2 : width;
                 var metaHeight = Direction ? height : height / 2;
+
+                if (size >= 2048)
+                {
+                    Debug.LogError("[BitonicPixelSorter] Size of source texture must be smaller than 2048.");
+                    return;
+                }
 
                 var metaTex = UniversalRenderer.CreateRenderGraphTexture(renderGraph,
                     new RenderTextureDescriptor(metaWidth, metaHeight, RenderTextureFormat.RInt)
