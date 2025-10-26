@@ -1,7 +1,7 @@
 ﻿#pragma kernel MetaPass
 #pragma kernel SortPass
 #pragma enable_d3d11_debug_symbols
-#pragma use_dxc // for nsight compatibility (D3D12 required)
+// #pragma use_dxc // for nsight compatibility (D3D12 required)
 
 #define MAX_THREADS 512 // threads per SM is usually multiple of 512 (NVIDIA). It may maximize occupancy.
 #define MAX_SIZE 2048 // due to group shared memory limit
