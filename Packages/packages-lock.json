@@ -1,13 +1,13 @@
 {
   "dependencies": {
     "com.ruccho.bitonicpixelsorter": {
-      "version": "file:com.ruccho.bitoicpixelsorter",
+      "version": "file:com.ruccho.bitonicpixelsorter",
       "depth": 0,
       "source": "embedded",
       "dependencies": {}
     },
     "com.ruccho.bitonicpixelsorter.urp": {
-      "version": "file:com.ruccho.bitoicpixelsorter.urp",
+      "version": "file:com.ruccho.bitonicpixelsorter.urp",
       "depth": 0,
       "source": "embedded",
       "dependencies": {
