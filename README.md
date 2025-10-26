@@ -10,9 +10,9 @@ The screenshot below shows it running on an NVIDIA GeForce RTX 4070 and it keeps
 
 Use UPM git dependencies.
 1. Open Package Manager and click `+` > `Add package from git URL...`
-2. Enter `https://github.com/ruccho/BitonicPixelSorter.git?path=/Packages/com.ruccho.bitonicpixelsorter`
+2. Enter `https://github.com/ruccho/BitonicPixelSorter.git?path=/Packages/com.ruccho.bitonicpixelsorter#release`
 
-3. (Optional) To use a RendererFeature for UniversalRP, also install `https://github.com/ruccho/BitonicPixelSorter.git?path=/Packages/com.ruccho.bitonicpixelsorter.urp`
+3. (Optional) To use a RendererFeature for UniversalRP, also install `https://github.com/ruccho/BitonicPixelSorter.git?path=/Packages/com.ruccho.bitonicpixelsorter.urp#release`
 
 
 ## BitonicPixelSorter Component
