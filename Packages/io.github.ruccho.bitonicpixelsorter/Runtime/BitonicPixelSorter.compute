@@ -240,9 +240,9 @@ void SortPass(uint3 gid : SV_GroupID,
         }
     }
 
-    for (uint phase = 0; phase < (uint)maxLevels; phase++)
+    for (uint phase = 0; (phase & 0xFFFF) < (uint)maxLevels; phase++)
     {
-        for (uint comparatorSize = 1 << phase; comparatorSize > 0; comparatorSize >>= 1)
+        for (phase = (phase << 16) + (phase & 0xFFFF); (uint)(phase >> 16) <= 0x7FFF; phase -= (1 << 16))
         {
             GroupMemoryBarrierWithGroupSync();
 
@@ -253,27 +253,26 @@ void SortPass(uint3 gid : SV_GroupID,
                 // avoid unnecessary unpacking to reduce register usage
                 // uint rangeStart = metaPacked >> 16;
                 // uint rangeEnd = metaPacked & 0xFFFF;
-
-                bool useR = ((metaPacked >> 16) & 1) > 0;
+                // int comparatorRank = phase >> 16;
 
                 uint x = (MAX_THREADS * t + gtid.x) << 1;
-                uint n = (metaPacked & 0xFFFF) - (metaPacked >> 16) + 1;
 
-                uint blockSize = 1 << (phase + 1);
-                uint endBlock = n / blockSize;
-                bool ascPattern = ((endBlock & 1) == 0) == ordering;
-
-                uint posInRange = x - (metaPacked >> 16) + (useR ? 1 : 0);
-                uint swapIndex = posInRange / 2;
-                uint a = (metaPacked >> 16) + (swapIndex & (comparatorSize - 1)) + floor(swapIndex / comparatorSize) * comparatorSize * 2;
+                uint useR = (metaPacked >> 16) & 1;
+                uint posInRange = x - (metaPacked >> 16) + useR;
+                uint swapIndex = posInRange >> 1;
+                uint comparatorSize = 1 << (phase >> 16);
+                uint a = (metaPacked >> 16) + (swapIndex & (comparatorSize - 1)) + floor(swapIndex >> (phase >> 16)) * (comparatorSize << 1);
 
                 uint b = a + comparatorSize;
 
                 bool doSwap = b <= (metaPacked & 0xFFFF);
                 b = doSwap ? b : a;
 
-                uint block = swapIndex / (1 << phase);
-                bool asc = (block % 2 == 0) == ascPattern;
+                uint block = posInRange >> 1 >> phase;
+                uint n = (metaPacked & 0xFFFF) - (metaPacked >> 16) + 1;
+                uint endBlock = n >> (phase + 1);
+                bool ascPattern = ((endBlock & 1) == 0) == ordering;
+                bool asc = ((block & 1) == 0) == ascPattern;
 
                 // compare
 
@@ -288,7 +287,7 @@ void SortPass(uint3 gid : SV_GroupID,
                 float4 left = asc == comp ? col_a : col_b;
                 float4 right = asc == comp ? col_b : col_a;
 
-                if (phase == (uint)maxLevels - 1 && comparatorSize == 1)
+                if (phase == (uint)maxLevels - 1 && (phase >> 16) == 0)
                 {
                     uint y = gid.x;
                     uint2 pos_a;
